@@ -12,10 +12,12 @@ h1 {
     background-color: #0A1128;
 }
 body {
+    background-image: url('24524c95b24a592e25945625af244dde.png');
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
     margin: 0;
-    background-image: url('https://i.pinimg.com/originals/24/52/4c/24524c95b24a592e25945625af244dde.png');
-    background-size: cover; /* Zorg ervoor dat de afbeelding de hele achtergrond bedekt /
-    background-repeat: no-repeat; / Voorkom herhaling van de afbeelding */
+    font-family: Arial, Helvetica, sans-serif;
 }
 .content {
     padding: 50px;
