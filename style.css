@@ -13,6 +13,9 @@ h1 {
 }
 body {
     margin: 0;
+    background-image: url('https://i.pinimg.com/originals/24/52/4c/24524c95b24a592e25945625af244dde.png');
+    background-size: cover; /* Zorg ervoor dat de afbeelding de hele achtergrond bedekt /
+    background-repeat: no-repeat; / Voorkom herhaling van de afbeelding */
 }
 .content {
     padding: 50px;
