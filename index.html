@@ -17,7 +17,7 @@
 </head>
 <body>
     <div class="topnav">
-        <h1>Build 3 project</h1>
+        <h1>ESP32 Web BLE Application</h1>
     </div>
     <div class="content">
         <div class="card-grid">
@@ -31,13 +31,13 @@
         </div>
         <div class="card-grid">
             <div class="card">
-                <h2>Temperatuur</h2>
+                <h2>Fetched Value</h2>
                 <p class="reading"><span id="valueContainer">NaN</span></p>
                 <p class="gray-label">Last reading: <span id="timestamp"></span></p>
             </div>
 
             <div class="card">
-                <h2>LED waarde</h2>
+                <h2>Control GPIO 2</h2>
                 <button id="onButton" class="onButton">ON</button>
                 <button id="offButton" class="offButton">OFF</button>
                 <p class="gray-label">Last value sent: <span id="valueSent"></span></p>
@@ -62,9 +62,9 @@
 
     //Define BLE Device Specs
     var deviceName ='ESP32Darryl';
-    var bleService = '19b10000-e8f2-537e-4f6c-d104768a1214';
-    var ledCharacteristic = '19b10002-e8f2-537e-4f6c-d104768a1214';
-    var sensorCharacteristic= '19b10001-e8f2-537e-4f6c-d104768a1214';
+    var bleService = 'a7fe5660-329c-405c-8b04-1d0f710d4dd8';
+    var ledCharacteristic = '3b8f236e-18ba-4813-8dfb-0541042cdb3e';
+    var sensorCharacteristic= 'f95e29f8-9976-4bf0-b642-3185162032a8';
 
     //Global Variables to Handle Bluetooth
     var bleServer;
