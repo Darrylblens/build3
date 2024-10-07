@@ -12,23 +12,34 @@
 #include <BLEServer.h>
 #include <BLEUtils.h>
 #include <BLE2902.h>
+#include <Adafruit_Sensor.h>
+#include <credentials.h>
+#include <DHT.h>
 
 BLEServer* pServer = NULL;
 BLECharacteristic* pSensorCharacteristic = NULL;
 BLECharacteristic* pLedCharacteristic = NULL;
 bool deviceConnected = false;
 bool oldDeviceConnected = false;
-uint32_t value = 0;
 
-#define ledPin D6 // Use the appropriate GPIO pin for your setup
+#define LEDPIN_ROOD D6 // Gebruik de juiste GPIO-pin voor jouw setup
+#define LEDPIN_GROEN D7
+#define DHTPIN D5
+#define BUTTONPIN D4
+#define DHTTYPE DHT22 
 
-// See the following for generating UUIDs:
-// https://www.uuidgenerator.net/
-#define SERVICE_UUID "19b10000-e8f2-537e-4f6c-d104768a1214"
-#define SENSOR_CHARACTERISTIC_UUID "19b10001-e8f2-537e-4f6c-d104768a1214"
-#define LED_CHARACTERISTIC_UUID "19b10002-e8f2-537e-4f6c-d104768a1214"
+DHT dht(DHTPIN, DHTTYPE);
+float temp;
+int buttonState;
+int buttonCount = 0;
 
-class MyServerCallbacks: public BLEServerCallbacks {
+unsigned long lastReadTime = 0;
+unsigned long lastSendTime = 0;  // Nieuw voor het verzenden van temperatuur
+const unsigned long readInterval = 1000;
+const unsigned long sendInterval = 3000;  // Interval voor het verzenden van temperatuur
+
+// Callback-functie voor server connect/disconnect
+class MyServerCallbacks : public BLEServerCallbacks {
   void onConnect(BLEServer* pServer) {
     deviceConnected = true;
   };
@@ -38,93 +49,159 @@ class MyServerCallbacks: public BLEServerCallbacks {
   }
 };
 
+// Callback-functie voor LED-aansturing via BLE
 class MyCharacteristicCallbacks : public BLECharacteristicCallbacks {
   void onWrite(BLECharacteristic* pLedCharacteristic) {
     std::string ledvalue  = pLedCharacteristic->getValue(); 
     String value = String(ledvalue.c_str());
     Serial.print("Characteristic event, written: ");
-    Serial.println(static_cast<int>(value[0])); // Print the integer value
+    Serial.println(static_cast<int>(value[0])); // Print de integer waarde
 
     int receivedValue = static_cast<int>(value[0]);
     if (receivedValue == 1) {
-      digitalWrite(ledPin, HIGH);
+      digitalWrite(LEDPIN_ROOD, HIGH);
     } else {
-      digitalWrite(ledPin, LOW);
+      digitalWrite(LEDPIN_ROOD, LOW);
     }
   }
 };
 
+// Functie om de temperatuur te lezen
+void getTemperature() {
+  temp = dht.readTemperature();
+  if (isnan(temp)) {
+    Serial.println("Fout bij het lezen van de temperatuur!");
+  } else {
+    Serial.print("Temperatuur: ");
+    Serial.print(temp);
+    Serial.println(" °C");
+  }
+}
+
+// Functie voor het verzenden van temperatuur via BLE
+void sendTemperature() {
+  getTemperature();
+  if (!isnan(temp)) {  // Controleer of de temperatuur geldig is
+    String tempStr = String(temp);
+    pSensorCharacteristic->setValue(tempStr.c_str()); // Stuur de temperatuurwaarde
+    pSensorCharacteristic->notify();  // Notificeer de verandering
+    Serial.print("Nieuwe temperatuur genotificeerd: ");
+    Serial.println(tempStr);
+  }
+}
+
+// Functie voor het instellen van de LED's op basis van temperatuur
+void setLightsBasedOnTemperature() {
+  if (temp > 25) {
+    digitalWrite(LEDPIN_ROOD, HIGH);
+    digitalWrite(LEDPIN_GROEN, LOW);
+    Serial.println("'t is warm");
+  } else {
+    digitalWrite(LEDPIN_ROOD, LOW);
+    digitalWrite(LEDPIN_GROEN, HIGH);
+    Serial.println("'t is koud");
+  }
+}
+
+// Functie om de Bluetooth-advertenties te beheren
+void manageAdvertising() {
+  if (!deviceConnected && oldDeviceConnected) {
+    Serial.println("Apparaat losgekoppeld.");
+    delay(500); // Geef de Bluetooth-stack tijd om zich voor te bereiden
+    pServer->startAdvertising(); // Start opnieuw met adverteren
+    Serial.println("Start opnieuw met adverteren");
+    oldDeviceConnected = deviceConnected;
+  }
+
+  if (deviceConnected && !oldDeviceConnected) {
+    oldDeviceConnected = deviceConnected;
+    Serial.println("Apparaat verbonden");
+  }
+}
+
+// Functie om knopindrukken te verwerken
+void handleButtonPress() {
+  buttonState = digitalRead(BUTTONPIN);
+  if (buttonState == HIGH && buttonCount == 0) {
+    buttonCount = 1;
+    Serial.println("Knop ingedrukt!");
+    sendTemperature();
+  } else if (buttonState == LOW) {
+    buttonCount = 0;
+  }
+}
+
+// Setup-functie
 void setup() {
   Serial.begin(115200);
-  pinMode(ledPin, OUTPUT);
+  pinMode(LEDPIN_ROOD, OUTPUT);
+  pinMode(LEDPIN_GROEN, OUTPUT);
+  pinMode(BUTTONPIN, INPUT);
 
-  // Create the BLE Device
+  dht.begin();
+  
+  // Maak het BLE-apparaat
   BLEDevice::init("ESP32Darryl");
 
-  // Create the BLE Server
+  // Maak de BLE-server
   pServer = BLEDevice::createServer();
   pServer->setCallbacks(new MyServerCallbacks());
 
-  // Create the BLE Service
+  // Maak de BLE-service
   BLEService *pService = pServer->createService(SERVICE_UUID);
 
-  // Create a BLE Characteristic
+  // Maak een BLE-kenmerk voor de sensor
   pSensorCharacteristic = pService->createCharacteristic(
                       SENSOR_CHARACTERISTIC_UUID,
                       BLECharacteristic::PROPERTY_READ   |
-                      BLECharacteristic::PROPERTY_WRITE  |
                       BLECharacteristic::PROPERTY_NOTIFY |
                       BLECharacteristic::PROPERTY_INDICATE
                     );
 
-  // Create the ON button Characteristic
+  // Maak het kenmerk voor de LED-aansturing
   pLedCharacteristic = pService->createCharacteristic(
                       LED_CHARACTERISTIC_UUID,
                       BLECharacteristic::PROPERTY_WRITE
                     );
 
-  // Register the callback for the ON button characteristic
+  // Registreer de callback voor de LED-aansturing
   pLedCharacteristic->setCallbacks(new MyCharacteristicCallbacks());
 
-  // https://www.bluetooth.com/specifications/gatt/viewer?attributeXmlFile=org.bluetooth.descriptor.gatt.client_characteristic_configuration.xml
-  // Create a BLE Descriptor
+  // Voeg descriptoren toe voor de kenmerken
   pSensorCharacteristic->addDescriptor(new BLE2902());
   pLedCharacteristic->addDescriptor(new BLE2902());
 
-  // Start the service
+  // Start de service
   pService->start();
 
   // Start advertising
   BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
   pAdvertising->addServiceUUID(SERVICE_UUID);
   pAdvertising->setScanResponse(false);
-  pAdvertising->setMinPreferred(0x0);  // set value to 0x00 to not advertise this parameter
+  pAdvertising->setMinPreferred(0x0);  // Zet waarde op 0x00 om deze parameter niet te adverteren
   BLEDevice::startAdvertising();
-  Serial.println("Waiting a client connection to notify...");
+  Serial.println("Wachten op clientverbinding om te notificeren...");
 }
 
+// Loop-functie: Verplaatst logica naar functies
 void loop() {
-  // notify changed value
-  if (deviceConnected) {
-    pSensorCharacteristic->setValue(String(value).c_str());
-    pSensorCharacteristic->notify();
-    value++;
-    Serial.print("New value notified: ");
-    Serial.println(value);
-    delay(3000); // bluetooth stack will go into congestion, if too many packets are sent, in 6 hours test i was able to go as low as 3ms
+  unsigned long currentMillis = millis();
+
+  // Verzend temperatuur als de tijd is verstreken
+  if (deviceConnected && (currentMillis - lastSendTime >= sendInterval)) {
+    lastSendTime = currentMillis;
+    sendTemperature();
   }
-  // disconnecting
-  if (!deviceConnected && oldDeviceConnected) {
-    Serial.println("Device disconnected.");
-    delay(500); // give the bluetooth stack the chance to get things ready
-    pServer->startAdvertising(); // restart advertising
-    Serial.println("Start advertising");
-    oldDeviceConnected = deviceConnected;
-  }
-  // connecting
-  if (deviceConnected && !oldDeviceConnected) {
-    // do stuff here on connecting
-    oldDeviceConnected = deviceConnected;
-    Serial.println("Device Connected");
+
+  // Verwerk knopindrukken
+  handleButtonPress();
+
+  // Beheer connect/disconnect en advertenties
+  manageAdvertising();
+
+  // Stel de verlichting in op basis van de temperatuur
+  if (currentMillis - lastReadTime >= readInterval) {
+    lastReadTime = currentMillis;
+    setLightsBasedOnTemperature();
   }
 }
